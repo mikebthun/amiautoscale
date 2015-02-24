@@ -32,6 +32,7 @@ def help():
   --security-groups "sg-1 sg-2 sg-3" 
   [--max N (default 20)] 
   [--min N default 2] 
+  [--instance-size m3.medium]
   [--help] 
 
 
@@ -43,9 +44,10 @@ def main(argv):
   description=None
   securityGroups=None
   autoscaleGroup=None
-  maxInstances=20
+  maxInstances=10
   minInstances=2
   instanceSize="t2.micro"
+
   #securityGroups="sg-0bdc126f sg-7abb751e"
 
   # make sure command line arguments are valid
@@ -62,7 +64,8 @@ def main(argv):
         'security-groups=',
         'autoscale-group=',
         'min=',
-        'max='
+        'max=',
+        'instance-size='
     
       ])
  
@@ -87,6 +90,8 @@ def main(argv):
       securityGroups=arg
     elif opt in ('', '--autoscale-group'):
       autoscaleGroup=arg
+    elif opt in ('', '--instance-size'):
+      instanceSize=arg
     elif opt in ('', '--min'):
       minInstances=int(arg)
     elif opt in ('', '--max'):
