@@ -1,4 +1,4 @@
-# amiautoscale
+# ami-to-autoscale
 
 AWS ec2 Instance to Autoscale
 
