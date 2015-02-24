@@ -105,8 +105,9 @@ def main(argv):
   ###################################
   # main code starts here
   ###################################
-  today = datetime.datetime.now().strftime("%Y-%m-%d-%H%M")
 
+  today = datetime.datetime.now().strftime("%Y-%m-%d-%s") 
+  
   tag = "%s-%s" % ( description, today )
  
   # create the new AMI
