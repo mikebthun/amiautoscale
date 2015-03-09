@@ -48,7 +48,6 @@ def main(argv):
   minInstances=2
   instanceSize="t2.micro"
 
-  #securityGroups="sg-0bdc126f sg-7abb751e"
 
   # make sure command line arguments are valid
   try:
