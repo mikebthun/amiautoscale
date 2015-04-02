@@ -7,7 +7,7 @@ import commands
 import datetime
 import json
 import time
-
+import pprint
 
 logger = logging.getLogger('stencil')
 hdlr = logging.StreamHandler(sys.stdout)
@@ -37,7 +37,23 @@ def help():
 
 
   """
+
+
+def Run(cmd):
  
+  print "** Running:", cmd,
+
+  (status,output) = commands.getstatusoutput(cmd)
+
+  if status > 0:
+    logger.error(output)
+    sys.exit(2)
+
+  print '[OK]'
+  return output
+
+
+
 def main(argv):
 
   instance=None
@@ -104,6 +120,24 @@ def main(argv):
   ###################################
   # main code starts here
   ###################################
+  
+  # get current number of instances so we can double
+  
+  cmd = "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-name %s" % autoscaleGroup
+  output = Run(cmd)
+
+  scaling_group_details = json.loads(output)
+ 
+  try:
+    instances = scaling_group_details['AutoScalingGroups'][0]['Instances']
+  except:
+    logger.error("FATAL: Could not get current instances count from auto scale group %s", )
+
+
+  currentInstanceCount = len(instances)
+
+  if currentInstanceCount < 1:
+    currentInstanceCount = 1
 
   today = datetime.datetime.now().strftime("%Y-%m-%d-%s") 
   
@@ -121,15 +155,8 @@ def main(argv):
 
   	)
 
-
   logger.info("Create AMI %s" % amiImageName )
-
-  (status,output) = commands.getstatusoutput(cmd)
-
-  if status>0:
-    logger.error("Could not create image: %s", cmd)
-    logger.error(output)
-    sys.exit(2)
+  output = Run(cmd)
  
   # grab the json
 
@@ -137,8 +164,10 @@ def main(argv):
     j = json.loads(output)
     ami = j['ImageId']
   except:
-  	logger.error("Could not parse ImageId from JSON")
-  	sys.exit(2)
+    logger.error("FATAL: Could not parse ImageId from JSON")
+    logger.error("CMD: %s" % cmd)
+    logger.error("JSON: %s" % j)
+    sys.exit(2)
 
  
   # check status of AMI snapshot 
@@ -158,7 +187,7 @@ def main(argv):
 
     logger.info("Checking %s" % ami)
 
-    (status,output) = commands.getstatusoutput(cmd)
+    output = Run(cmd)
 
     try:
       j = json.loads(output)
@@ -171,6 +200,7 @@ def main(argv):
       break
     if state == "failed":
       logger.error("AMI Creation failed")
+      logger.error("OUTPUT: %s" % output)
       sys.exit(2)
     else:
       logger.info(state)
@@ -183,6 +213,8 @@ def main(argv):
 
 
   launchConfigName = "%s-LAUNCH-CONFIG" % ( tag )
+
+  logger.info("Creating new launch config and wait 30 seconds...")
  
   cmd = """aws autoscaling create-launch-configuration --launch-configuration-name %s --image-id %s --instance-type %s --security-groups %s --instance-monitoring Enabled=true --associate-public-ip-address""" % (
   
@@ -193,20 +225,15 @@ def main(argv):
 
   )  
 
-
-  (status,output) = commands.getstatusoutput(cmd)
-
-  if status>0:
-    logger.error("Could not create launch configuration: %s", cmd)
-    logger.error(output)
-    sys.exit(2)
-
+ 
+  Run(cmd)
+ 
  
   # wait for launch configuration to be available
   time.sleep(30)
   
 
-  logger.info("Set new launch config to the autoscale group and bump max size")
+  logger.info("Update autoscale group and bump max size")
  
 
   # # switch the scaling group to use this AMI
@@ -217,26 +244,50 @@ def main(argv):
    
      autoscaleGroup,
      launchConfigName,
-     minInstances*2, # doubles amount of instances so we can clear old ones when we scale down
-     maxInstances
+     currentInstanceCount*2, # doubles amount of instances so we can clear old ones when we scale down
+     (currentInstanceCount*2)*2 # bump high during transition
 
   	)
 
-  (status,output) = commands.getstatusoutput(cmd)
+  Run(cmd)
 
-  if status>0:
-    logger.error("Could not update auto scaling group: %s", cmd)
-    logger.error(output)
-    sys.exit(2)
+  # loop over all instances waiting for them to be available before descaling
+  logger.info("Wait for scaleup instances to finishing launching...")
 
-
-  # lower it back to its normal size
-  logger.info("Wait 7 minutes and then reduce size of autoscale group...")
+  # sleep 30 seconds for instances to show up
+  time.sleep(60)
  
-  # sleep 7 minutes
-  time.sleep(420)
+  # loop over all instances and check status
+  healthy = True
+  timeout = 700
+  start = time.time()
 
+  while True:
+ 
+    logger.info("Checking new instances status...")
+    
+    for instance in instances:
+  
+      if instance['LifecycleState'] != 'InService':
+        healthy = False
+  
+      if instance['HealthStatus'] != 'Healthy':
+        healthy=False
+  
+    # all instances are good -- lets break
+    if healthy:
+      break
 
+    # we have timed out
+    if (time.time()-start) > timeout:
+      logger.error("FATAL: Instances scale up timed out on health check")
+      sys.exit(2)
+
+    # dont spam
+    time.sleep(15)
+
+  # descale and set to desired counts (normal size)
+  logger.info("Descale and set to desired counts")
   cmd = """aws autoscaling update-auto-scaling-group --auto-scaling-group-name "%s" --min-size %d --max-size %d""" % (
    
      autoscaleGroup,
@@ -245,15 +296,8 @@ def main(argv):
 
   	)
 
-  (status,output) = commands.getstatusoutput(cmd)
-
-  if status>0:
-    logger.error("Could not update auto scaling group: %s", cmd)
-    logger.error(output)
-    sys.exit(2)
+  Run(cmd)
  
-
-
   logger.info("Success")
   
 
