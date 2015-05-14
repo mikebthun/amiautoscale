@@ -30,6 +30,7 @@ def help():
   --description "LIVE" 
   --autoscale-group LIVEWEB 
   --security-groups "sg-1 sg-2 sg-3" 
+  [--keyname]
   [--max N (default 20)] 
   [--min N default 2] 
   [--instance-size m3.medium]
@@ -63,6 +64,7 @@ def main(argv):
   maxInstances=10
   minInstances=2
   instanceSize="t2.micro"
+  keyname=""
 
 
   # make sure command line arguments are valid
@@ -80,7 +82,8 @@ def main(argv):
         'autoscale-group=',
         'min=',
         'max=',
-        'instance-size='
+        'instance-size=',
+        'keyname='
     
       ])
  
@@ -111,6 +114,8 @@ def main(argv):
       minInstances=int(arg)
     elif opt in ('', '--max'):
      maxInstances=int(arg)
+    elif opt in ('', '--keyname'):
+     keyname="--key-name %s" % arg
 
   if None in [instance,description,securityGroups,autoscaleGroup]:
      help()
@@ -216,12 +221,13 @@ def main(argv):
 
   logger.info("Creating new launch config and wait 30 seconds...")
  
-  cmd = """aws autoscaling create-launch-configuration --launch-configuration-name %s --image-id %s --instance-type %s --security-groups %s --instance-monitoring Enabled=true --associate-public-ip-address""" % (
+  cmd = """aws autoscaling create-launch-configuration --launch-configuration-name %s --image-id %s --instance-type %s --security-groups %s --instance-monitoring Enabled=true --associate-public-ip-address %s""" % (
   
     launchConfigName,
     ami,
     instanceSize,
-    securityGroups
+    securityGroups,
+    keyname
 
   )  
 
