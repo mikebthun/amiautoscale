@@ -174,7 +174,7 @@ def main(argv):
   # wait for snapshot to finish
 
   iteration = 0
-  limit=25
+  limit=30 # 15 minutes 30 @ 30 sec intervals
 
   while True:
 
