@@ -235,7 +235,6 @@ def main(argv):
 
   logger.info("Update autoscale group and bump max size")
  
-
   # # switch the scaling group to use this AMI
   # # double the size of the scaling group
 
@@ -288,12 +287,12 @@ def main(argv):
 
   # descale and set to desired counts (normal size)
   logger.info("Descale and set to desired counts")
-  cmd = """aws autoscaling update-auto-scaling-group --auto-scaling-group-name "%s" --min-size %d --max-size %d""" % (
+  cmd = """aws autoscaling update-auto-scaling-group --auto-scaling-group-name "%s" --min-size %d --max-size %d --desired-capacity %d""" % (
    
      autoscaleGroup,
      minInstances,
-     maxInstances
-
+     maxInstances,
+     currentInstanceCount
   	)
 
   Run(cmd)
