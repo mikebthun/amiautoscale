@@ -237,8 +237,7 @@ def main(argv):
  
 
   # Remove old AMIs here
-  expiredTime = time.time() - ((60*60)*24)*daysToKeep # seven days of AMIs
-  #expiredTime = time.time() - 600 # seven days of AMIs
+  expiredTime = time.time() - ((60*60)*24)*daysToKeep # seven days of AMIs  
  
   # only run if we have enough images to delete
   if len(rawImages) > 3:
@@ -247,7 +246,7 @@ def main(argv):
         for tg in image['Tags']:
           if tg['Key'] == amitag:
             if float(tg['Value']) < expiredTime:
-              print "EXPIRED - Deleting: ", image['ImageId'], tg['Value']
+              logger.info("EXPIRED - Deleting: %s %s " % ( image['ImageId'], tg['Value'] ))
               cmd = "aws ec2 deregister-image --image-id %s" % image['ImageId']
 
               output = Run(cmd)
@@ -258,7 +257,7 @@ def main(argv):
                 if m:
                   cmd = "aws autoscaling delete-launch-configuration --launch-configuration-name %s-LAUNCH-CONFIG" % m.group(1)
                   output = Run(cmd)
-                  print output
+                  logger.info(output)
               except:
                 pass
          
@@ -344,12 +343,16 @@ def main(argv):
     # dont spam
     time.sleep(15)
 
-
+  # handle desired
   desiredCapacity = currentInstanceCount
   
   # make sure we have at least two instances
   if desiredCapacity < 2:
     desiredCapacity=2
+
+  # make sure desired is not greater than max
+  if desiredCapacity > maxInstances:
+    desiredCapacity=maxInstances
 
   # descale and set to desired counts (normal size)
   logger.info("Descale and set to desired counts")
@@ -358,7 +361,7 @@ def main(argv):
      autoscaleGroup,
      minInstances,
      maxInstances,
-     currentInstanceCount
+     desiredCapacity
   	)
 
   Run(cmd)
