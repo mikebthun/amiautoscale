@@ -7,7 +7,7 @@ import commands
 import datetime
 import json
 import time
-import pprint
+import re
 
 logger = logging.getLogger('stencil')
 hdlr = logging.StreamHandler(sys.stdout)
@@ -197,8 +197,7 @@ def main(argv):
     sys.exit(2)
  
 
-  
-
+ 
   # check status of AMI snapshot 
   # wait for snapshot to finish
 
@@ -239,28 +238,36 @@ def main(argv):
 
   # Remove old AMIs here
   expiredTime = time.time() - ((60*60)*24)*daysToKeep # seven days of AMIs
+  #expiredTime = time.time() - 600 # seven days of AMIs
  
   # only run if we have enough images to delete
   if len(rawImages) > 3:
     for image in rawImages:
       try:
-        for tag in image['Tags']:
-          if tag['Key'] == amitag:
-            if float(tag['Value']) < expiredTime:
-              print "EXPIRED - Deleting: ", image['ImageId'], tag['Value']
+        for tg in image['Tags']:
+          if tg['Key'] == amitag:
+            if float(tg['Value']) < expiredTime:
+              print "EXPIRED - Deleting: ", image['ImageId'], tg['Value']
               cmd = "aws ec2 deregister-image --image-id %s" % image['ImageId']
+
               output = Run(cmd)
-              print output
-          
+              
+              ## delete the launch config attached to this AMI if it exists
+              try:
+                m = re.match(r'(.*)-AMI$', image['Name'])
+                if m:
+                  cmd = "aws autoscaling delete-launch-configuration --launch-configuration-name %s-LAUNCH-CONFIG" % m.group(1)
+                  output = Run(cmd)
+                  print output
+              except:
+                pass
+         
   
       except Exception, e:
         print "Fatal", e
         sys.exit(2)
 
-
   # create launch configuration
-
-
   launchConfigName = "%s-LAUNCH-CONFIG" % ( tag )
 
   logger.info("Creating new launch config and wait 30 seconds...")
@@ -278,7 +285,9 @@ def main(argv):
  
   Run(cmd)
  
- 
+  # remove old launch configs here
+
+
   # wait for launch configuration to be available
   time.sleep(30)
   
@@ -334,6 +343,13 @@ def main(argv):
 
     # dont spam
     time.sleep(15)
+
+
+  desiredCapacity = currentInstanceCount
+  
+  # make sure we have at least two instances
+  if desiredCapacity < 2:
+    desiredCapacity=2
 
   # descale and set to desired counts (normal size)
   logger.info("Descale and set to desired counts")
