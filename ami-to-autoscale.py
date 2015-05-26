@@ -65,6 +65,7 @@ def main(argv):
   minInstances=2
   instanceSize="t2.micro"
   keyname=""
+  daysToKeep=7
 
 
   # make sure command line arguments are valid
@@ -72,7 +73,7 @@ def main(argv):
     options, args = getopt.getopt(
 
        argv, 
-      'hv', 
+      'hvi:d:a:s:', 
       [ 
         'help',
         'verbose',
@@ -100,13 +101,13 @@ def main(argv):
       sys.exit(2)
     elif opt in ('-v', '--verbose'):
       logger.setLevel(logging.DEBUG) 
-    elif opt in ('', '--description'):
+    elif opt in ('-d', '--description'):
       description=arg
-    elif opt in ('', '--instance-id'):
+    elif opt in ('-i', '--instance-id'):
       instance=arg
-    elif opt in ('', '--security-groups'):
+    elif opt in ('-s', '--security-groups'):
       securityGroups=arg
-    elif opt in ('', '--autoscale-group'):
+    elif opt in ('-a', '--autoscale-group'):
       autoscaleGroup=arg
     elif opt in ('', '--instance-size'):
       instanceSize=arg
@@ -161,7 +162,7 @@ def main(argv):
   	)
 
   logger.info("Create AMI %s" % amiImageName )
-  output = Run(cmd)
+  output = Run(cmd) #print output
  
   # grab the json
 
@@ -175,6 +176,29 @@ def main(argv):
     sys.exit(2)
 
  
+  ## tag the AMI
+  amitag = "ami-to-autoscale-%s" % description
+  cmd = """aws ec2 create-tags --resources %s --tags Key=%s,Value=%f""" % ( ami, amitag, time.time() )
+  output = Run(cmd)
+
+  print output
+
+
+  cmd = """aws ec2 describe-images --filters Name=tag-key,Values=%s""" % amitag
+  output = Run(cmd)
+
+  try:
+    j = json.loads(output)
+    rawImages = j['Images']
+  except:
+    logger.error("FATAL: Could not parse ImageId from JSON")
+    logger.error("CMD: %s" % cmd)
+    logger.error("JSON: %s" % j)
+    sys.exit(2)
+ 
+
+  
+
   # check status of AMI snapshot 
   # wait for snapshot to finish
 
@@ -212,6 +236,26 @@ def main(argv):
 
     time.sleep(30)
  
+
+  # Remove old AMIs here
+  expiredTime = time.time() - ((60*60)*24)*daysToKeep # seven days of AMIs
+ 
+  # only run if we have enough images to delete
+  if len(rawImages) > 3:
+    for image in rawImages:
+      try:
+        for tag in image['Tags']:
+          if tag['Key'] == amitag:
+            if float(tag['Value']) < expiredTime:
+              print "EXPIRED - Deleting: ", image['ImageId'], tag['Value']
+              cmd = "aws ec2 deregister-image --image-id %s" % image['ImageId']
+              output = Run(cmd)
+              print output
+          
+  
+      except Exception, e:
+        print "Fatal", e
+        sys.exit(2)
 
 
   # create launch configuration
