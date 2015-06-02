@@ -329,7 +329,7 @@ def main(argv):
 
     checkInstances = getInstances(autoscaleGroup)
 
-    if currentInstanceCount == len(checkInstances) && waitingForNewInstances:
+    if currentInstanceCount == len(checkInstances) and waitingForNewInstances:
       waitingForNewInstances=None
       logger.info("No new instances yet... (Elapsed %.3f Original Instance Count: %d  Current Instance Count: %d)" %  ( runningTime, currentInstanceCount, len(checkInstances)) )
       continue 
