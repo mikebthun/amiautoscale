@@ -54,6 +54,20 @@ def Run(cmd):
   return output
 
 
+def getInstances(autoscaleGroup):
+  cmd = "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-name %s" % autoscaleGroup
+  output = Run(cmd)
+
+  scaling_group_details = json.loads(output)
+ 
+  try:
+    instances = scaling_group_details['AutoScalingGroups'][0]['Instances']
+  except:
+    logger.error("FATAL: Could not get current instances count from auto scale group %s", )
+
+  return instances
+
+
 
 def main(argv):
 
@@ -128,18 +142,8 @@ def main(argv):
   ###################################
   
   # get current number of instances so we can double
-  
-  cmd = "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-name %s" % autoscaleGroup
-  output = Run(cmd)
-
-  scaling_group_details = json.loads(output)
+  instances = getInstances(autoscaleGroup)
  
-  try:
-    instances = scaling_group_details['AutoScalingGroups'][0]['Instances']
-  except:
-    logger.error("FATAL: Could not get current instances count from auto scale group %s", )
-
-
   currentInstanceCount = len(instances)
 
   if currentInstanceCount < 1:
@@ -293,10 +297,8 @@ def main(argv):
 
   logger.info("Update autoscale group and bump max size")
  
-  # # switch the scaling group to use this AMI
-  # # double the size of the scaling group
-
-
+  ## switch the scaling group to use this AMI
+  ## double the size of the scaling group
   cmd = """aws autoscaling update-auto-scaling-group --auto-scaling-group-name "%s" --launch-configuration-name %s --min-size %d --max-size %d""" % (
    
      autoscaleGroup,
@@ -309,26 +311,39 @@ def main(argv):
   Run(cmd)
 
   # loop over all instances waiting for them to be available before descaling
-  logger.info("Wait for scaleup instances to finishing launching...")
-
-  # sleep 30 seconds for instances to show up
-  time.sleep(60)
+  logger.info("Wait for new scaleup instances to intialize...")
  
   # loop over all instances and check status
-  healthy = True
-  timeout = 700
+ 
+  timeout = 760
   start = time.time()
+  waitingForNewInstances=True
 
   while True:
- 
-    logger.info("Checking new instances status...")
     
-    for instance in instances:
+    runningTime = time.time()-start
+    logger.info("Checking new instances status (Elapsed %.3f)" % runningTime)
+
+    # dont spam
+    time.sleep(15)
+
+    checkInstances = getInstances(autoscaleGroup)
+
+    if currentInstanceCount == len(checkInstances) && waitingForNewInstances:
+      waitingForNewInstances=None
+      logger.info("No new instances yet... (Elapsed %.3f Original Instance Count: %d  Current Instance Count: %d)" %  ( runningTime, currentInstanceCount, len(checkInstances)) )
+      continue 
+    
+    healthy=True
+
+    for instance in checkInstances:
   
       if instance['LifecycleState'] != 'InService':
+        logger.info("Instance not in service yet: %s", instance['InstanceId'] )
         healthy = False
   
       if instance['HealthStatus'] != 'Healthy':
+        logger.info("Instance not healthy yet: %s", instance['InstanceId'] )
         healthy=False
   
     # all instances are good -- lets break
@@ -336,12 +351,11 @@ def main(argv):
       break
 
     # we have timed out
-    if (time.time()-start) > timeout:
+    if runningTime > timeout:
       logger.error("FATAL: Instances scale up timed out on health check")
       sys.exit(2)
 
-    # dont spam
-    time.sleep(15)
+
 
   # handle desired
   desiredCapacity = currentInstanceCount
